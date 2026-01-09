@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strange Attractors Playground</title>
+  <meta name="description" content="Interactive 3D visualization of chaotic strange attractors with hand tracking control" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'JetBrains Mono', monospace; }
+    body { background: #0a0a0f; }
+    #canvas-container { position: absolute; inset: 0; cursor: grab; }
+    #canvas-container:active { cursor: grabbing; }
+    
+    .header {
+      position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+      text-align: center; z-index: 10; pointer-events: none;
+    }
+    .header h1 {
+      font-size: 1.8rem; font-weight: 300; margin: 0;
+      letter-spacing: 0.3em; text-transform: uppercase;
+      text-shadow: 0 0 30px currentColor;
+    }
+    .header p {
+      font-size: 0.75rem; color: #ffffff60; margin: 8px 0 0 0; letter-spacing: 0.2em;
+    }
+    
+    .panel {
+      position: absolute; top: 100px; left: 20px; width: 260px;
+      background: rgba(10, 10, 15, 0.85); backdrop-filter: blur(20px);
+      border-radius: 16px; border: 1px solid rgba(255,255,255,0.08);
+      padding: 20px; z-index: 10; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      max-height: calc(100vh - 140px); overflow-y: auto;
+    }
+    
+    .label {
+      display: block; font-size: 0.65rem; color: #ffffff50;
+      letter-spacing: 0.15em; margin-bottom: 10px; text-transform: uppercase;
+    }
+    
+    .attractor-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 20px;
+    }
+    .attractor-btn {
+      padding: 8px 6px; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px; background: rgba(255,255,255,0.02);
+      color: #ffffff80; font-size: 0.65rem; cursor: pointer;
+      transition: all 0.2s ease; font-family: inherit;
+    }
+    .attractor-btn.active { background: var(--color-15); border-color: var(--color); color: var(--color); }
+    .attractor-btn:hover { background: rgba(255,255,255,0.05); }
+    
+    .webcam-section {
+      padding: 12px; background: rgba(255,255,255,0.02);
+      border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;
+    }
+    .webcam-section.active { background: var(--color-10); border-color: var(--color-40); }
+    .webcam-header { display: flex; align-items: center; justify-content: space-between; }
+    .webcam-title { font-size: 0.7rem; color: #ffffff60; font-weight: 500; }
+    .webcam-title.active { color: var(--color); }
+    
+    .btn {
+      padding: 6px 12px; border: none; border-radius: 6px;
+      background: rgba(255,255,255,0.1); color: #fff;
+      font-size: 0.65rem; cursor: pointer; font-family: inherit; font-weight: 500;
+    }
+    .btn.active { background: var(--color); color: #000; }
+    
+    .mode-btns { display: flex; gap: 6px; margin: 12px 0; }
+    .mode-btn {
+      flex: 1; padding: 6px; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px; background: transparent; color: #ffffff60;
+      font-size: 0.6rem; cursor: pointer; font-family: inherit;
+    }
+    .mode-btn.active { border-color: var(--color); background: var(--color-20); color: var(--color); }
+    
+    .slider-row { margin-bottom: 16px; }
+    .slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .slider-label { font-size: 0.6rem; color: #ffffff50; letter-spacing: 0.1em; text-transform: uppercase; }
+    .slider-value { font-size: 0.7rem; color: var(--color); font-variant-numeric: tabular-nums; }
+    
+    input[type="range"] {
+      width: 100%; height: 4px; appearance: none; border-radius: 2px; cursor: pointer;
+      background: linear-gradient(90deg, var(--color) 0%, var(--color-40) 100%);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none; width: 12px; height: 12px; border-radius: 50%;
+      background: white; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    
+    .toggle-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .toggle {
+      width: 32px; height: 18px; border-radius: 9px;
+      background: rgba(255,255,255,0.1); position: relative; transition: background 0.2s ease;
+    }
+    .toggle.active { background: var(--color); }
+    .toggle-knob {
+      position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+      border-radius: 50%; background: #fff; transition: left 0.2s ease;
+    }
+    .toggle.active .toggle-knob { left: 16px; }
+    .toggle-label { font-size: 0.65rem; color: #ffffff70; }
+    
+    .webcam-preview {
+      position: absolute; bottom: 20px; right: 20px;
+      width: 160px; height: 120px; border-radius: 12px; overflow: hidden;
+      border: 2px solid var(--color-60); box-shadow: 0 0 30px var(--color-30); z-index: 10;
+    }
+    .webcam-preview video {
+      width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block;
+    }
+    .webcam-status {
+      position: absolute; bottom: 6px; left: 6px; font-size: 0.55rem;
+      color: var(--color); background: rgba(0,0,0,0.6); padding: 3px 6px;
+      border-radius: 4px; display: flex; align-items: center; gap: 4px;
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%; animation: pulse 1s infinite;
+    }
+    .status-dot.tracking { background: #4caf50; }
+    .status-dot.no-hand { background: #ff5722; }
+    
+    .params-panel {
+      position: absolute; top: 100px; right: 20px;
+      background: rgba(10, 10, 15, 0.7); backdrop-filter: blur(10px);
+      border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);
+      padding: 14px; z-index: 10; max-width: 180px;
+    }
+    .params-title {
+      font-size: 0.55rem; color: #ffffff40; letter-spacing: 0.1em;
+      margin-bottom: 8px; text-transform: uppercase;
+    }
+    .params-list { font-size: 0.6rem; color: var(--color); line-height: 1.5; }
+    
+    .instructions {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      text-align: center; z-index: 10; pointer-events: none;
+    }
+    .instructions p { font-size: 0.6rem; color: #ffffff40; margin: 0; letter-spacing: 0.1em; }
+    
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  
+  <div class="header">
+    <h1 id="title">Strange Attractors</h1>
+    <p>INTERACTIVE CHAOS VISUALIZATION</p>
+  </div>
+  
+  <div class="panel">
+    <span class="label">Attractor Type</span>
+    <div class="attractor-grid" id="attractor-buttons"></div>
+    
+    <div class="webcam-section" id="webcam-section">
+      <div class="webcam-header">
+        <span class="webcam-title" id="webcam-title">✋ Hand Tracking</span>
+        <button class="btn" id="webcam-toggle">Enable</button>
+      </div>
+      <div id="webcam-controls" class="hidden">
+        <div class="mode-btns">
+          <button class="mode-btn active" data-mode="attract">Attract</button>
+          <button class="mode-btn" data-mode="repel">Repel</button>
+        </div>
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label">Influence</span>
+            <span class="slider-value" id="influence-value">50%</span>
+          </div>
+          <input type="range" id="influence-slider" min="0" max="100" value="50">
+        </div>
+      </div>
+    </div>
+    
+    <div class="slider-row">
+      <div class="slider-header">
+        <span class="slider-label">Particles</span>
+        <span class="slider-value" id="particles-value">15,000</span>
+      </div>
+      <input type="range" id="particles-slider" min="1000" max="50000" step="1000" value="15000">
+    </div>
+    
+    <div class="slider-row">
+      <div class="slider-header">
+        <span class="slider-label">Speed</span>
+        <span class="slider-value" id="speed-value">1.0x</span>
+      </div>
+      <input type="range" id="speed-slider" min="0.1" max="3" step="0.1" value="1">
+    </div>
+    
+    <div class="toggle-row" id="rotate-toggle">
+      <div class="toggle active"><div class="toggle-knob"></div></div>
+      <span class="toggle-label">Auto Rotate</span>
+    </div>
+  </div>
+  
+  <div class="webcam-preview hidden" id="webcam-preview">
+    <video id="webcam-video" playsinline muted autoplay></video>
+    <div class="webcam-status">
+      <div class="status-dot no-hand" id="status-dot"></div>
+      <span id="status-text">No hand</span>
+    </div>
+  </div>
+  
+  <div class="params-panel">
+    <div class="params-title" id="params-title">Lorenz Parameters</div>
+    <div class="params-list" id="params-list"></div>
+  </div>
+  
+  <div class="instructions">
+    <p>DRAG TO ROTATE • SCROLL TO ZOOM • ENABLE HAND TRACKING TO CONTROL WITH GESTURES</p>
+  </div>
+  
+  <video id="hidden-video" style="display:none" playsinline muted></video>
+  <canvas id="tracking-canvas" style="display:none"></canvas>
+
+<script>
+const attractors = {
+  lorenz: {
+    name: 'Lorenz', description: 'The butterfly attractor',
+    params: { sigma: 10, rho: 28, beta: 2.6667 },
+    scale: 0.03, color: '#ff6b35', colorEnd: '#ffb347',
+    compute: (x, y, z, p) => ({ dx: p.sigma * (y - x), dy: x * (p.rho - z) - y, dz: x * y - p.beta * z })
+  },
+  aizawa: {
+    name: 'Aizawa', description: 'Twisted torus attractor',
+    params: { a: 0.95, b: 0.7, c: 0.6, d: 3.5, e: 0.25, f: 0.1 },
+    scale: 0.3, color: '#e91e63', colorEnd: '#9c27b0',
+    compute: (x, y, z, p) => ({
+      dx: (z - p.b) * x - p.d * y, dy: p.d * x + (z - p.b) * y,
+      dz: p.c + p.a * z - (z*z*z)/3 - (x*x + y*y) * (1 + p.e * z) + p.f * z * x*x*x
+    })
+  },
+  thomas: {
+    name: 'Thomas', description: 'Cyclically symmetric attractor',
+    params: { b: 0.208186 }, scale: 0.35, color: '#00bcd4', colorEnd: '#4dd0e1',
+    compute: (x, y, z, p) => ({ dx: Math.sin(y) - p.b * x, dy: Math.sin(z) - p.b * y, dz: Math.sin(x) - p.b * z })
+  },
+  halvorsen: {
+    name: 'Halvorsen', description: 'Triangular spiral attractor',
+    params: { a: 1.89 }, scale: 0.08, color: '#2196f3', colorEnd: '#64b5f6',
+    compute: (x, y, z, p) => ({ dx: -p.a*x - 4*y - 4*z - y*y, dy: -p.a*y - 4*z - 4*x - z*z, dz: -p.a*z - 4*x - 4*y - x*x })
+  },
+  dadras: {
+    name: 'Dadras', description: 'Multi-scroll chaotic attractor',
+    params: { p: 3, q: 2.7, r: 1.7, s: 2, e: 9 }, scale: 0.06, color: '#4caf50', colorEnd: '#8bc34a',
+    compute: (x, y, z, pr) => ({ dx: y - pr.p*x + pr.q*y*z, dy: pr.r*y - x*z + z, dz: pr.s*x*y - pr.e*z })
+  },
+  chen: {
+    name: 'Chen', description: 'Double-scroll attractor variant',
+    params: { a: 40, b: 3, c: 28 }, scale: 0.025, color: '#ffc107', colorEnd: '#ff9800',
+    compute: (x, y, z, p) => ({ dx: p.a*(y-x), dy: (p.c-p.a)*x - x*z + p.c*y, dz: x*y - p.b*z })
+  },
+  rossler: {
+    name: 'Rössler', description: 'Simple chaotic attractor',
+    params: { a: 0.2, b: 0.2, c: 5.7 }, scale: 0.05, color: '#9c27b0', colorEnd: '#ce93d8',
+    compute: (x, y, z, p) => ({ dx: -y - z, dy: x + p.a*y, dz: p.b + z*(x - p.c) })
+  },
+  sprott: {
+    name: 'Sprott', description: 'Elegant minimalist attractor',
+    params: { a: 2.07, b: 1.79 }, scale: 0.25, color: '#607d8b', colorEnd: '#90a4ae',
+    compute: (x, y, z, p) => ({ dx: y + p.a*x*y + x*z, dy: 1 - p.b*x*x + y*z, dz: x - x*x - y*y })
+  }
+};
+
+let currentAttractor = 'lorenz';
+let particleCount = 15000;
+let speed = 1;
+let autoRotate = true;
+let webcamEnabled = false;
+let interactionMode = 'attract';
+let handInfluence = 0.5;
+let handPosition = null;
+let rotation = { x: 0, y: 0 };
+let zoom = 5;
+let isDragging = false;
+let lastMouse = { x: 0, y: 0 };
+
+let scene, camera, renderer, particles, geometry, material, handSphere;
+let positions, colors;
+let handTracker = null;
+
+function rk4(x, y, z, dt, compute, params) {
+  const k1 = compute(x, y, z, params);
+  const k2 = compute(x + k1.dx*dt/2, y + k1.dy*dt/2, z + k1.dz*dt/2, params);
+  const k3 = compute(x + k2.dx*dt/2, y + k2.dy*dt/2, z + k2.dz*dt/2, params);
+  const k4 = compute(x + k3.dx*dt, y + k3.dy*dt, z + k3.dz*dt, params);
+  return {
+    x: x + (k1.dx + 2*k2.dx + 2*k3.dx + k4.dx) * dt / 6,
+    y: y + (k1.dy + 2*k2.dy + 2*k3.dy + k4.dy) * dt / 6,
+    z: z + (k1.dz + 2*k2.dz + 2*k3.dz + k4.dz) * dt / 6
+  };
+}
+
+class SimpleHandTracker {
+  constructor(video, canvas) {
+    this.video = video;
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d', { willReadFrequently: true });
+    this.smoothed = { x: 0.5, y: 0.5 };
+  }
+  
+  detect() {
+    if (!this.video.videoWidth) return null;
+    const w = this.canvas.width, h = this.canvas.height;
+    this.ctx.drawImage(this.video, 0, 0, w, h);
+    const data = this.ctx.getImageData(0, 0, w, h).data;
+    
+    let sumX = 0, sumY = 0, count = 0;
+    for (let y = 0; y < h; y += 4) {
+      for (let x = 0; x < w; x += 4) {
+        const i = (y * w + x) * 4;
+        const r = data[i], g = data[i+1], b = data[i+2];
+        if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r-g) > 15 && r-g > 15 && r-b > 15) {
+          sumX += x; sumY += y; count++;
+        }
+      }
+    }
+    
+    if (count > 50) {
+      const rawX = sumX / count / w, rawY = sumY / count / h;
+      this.smoothed.x += (rawX - this.smoothed.x) * 0.3;
+      this.smoothed.y += (rawY - this.smoothed.y) * 0.3;
+      return { x: 1 - this.smoothed.x, y: this.smoothed.y, confidence: Math.min(count/500, 1) };
+    }
+    return null;
+  }
+}
+
+function updateColors() {
+  const a = attractors[currentAttractor];
+  document.documentElement.style.setProperty('--color', a.color);
+  document.documentElement.style.setProperty('--color-10', a.color + '1a');
+  document.documentElement.style.setProperty('--color-15', a.color + '26');
+  document.documentElement.style.setProperty('--color-20', a.color + '33');
+  document.documentElement.style.setProperty('--color-30', a.color + '4d');
+  document.documentElement.style.setProperty('--color-40', a.color + '66');
+  document.documentElement.style.setProperty('--color-60', a.color + '99');
+  document.getElementById('title').style.color = a.color;
+  document.getElementById('params-title').textContent = a.name + ' Parameters';
+  document.getElementById('params-list').innerHTML = Object.entries(a.params)
+    .map(([k,v]) => `${k} = ${v.toFixed(4)}`).join('<br>');
+}
+
+function initParticles() {
+  const a = attractors[currentAttractor];
+  const c1 = new THREE.Color(a.color), c2 = new THREE.Color(a.colorEnd);
+  positions = new Float32Array(particleCount * 3);
+  colors = new Float32Array(particleCount * 3);
+  const sizes = new Float32Array(particleCount);
+  
+  for (let i = 0; i < particleCount; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = Math.random() * 2 + 0.5;
+    positions[i*3] = r * Math.sin(phi) * Math.cos(theta);
+    positions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[i*3+2] = r * Math.cos(phi);
+    
+    const t = Math.random();
+    const mixed = c1.clone().lerp(c2, t);
+    colors[i*3] = mixed.r; colors[i*3+1] = mixed.g; colors[i*3+2] = mixed.b;
+    sizes[i] = Math.random() * 2 + 1;
+  }
+  
+  if (geometry) geometry.dispose();
+  geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  
+  if (particles) scene.remove(particles);
+  particles = new THREE.Points(geometry, material);
+  scene.add(particles);
+}
+
+function init() {
+  const container = document.getElementById('canvas-container');
+  const w = container.clientWidth, h = container.clientHeight;
+  
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color('#0a0a0f');
+  scene.fog = new THREE.FogExp2('#0a0a0f', 0.015);
+  
+  camera = new THREE.PerspectiveCamera(60, w/h, 0.1, 1000);
+  camera.position.z = zoom;
+  
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+  
+  material = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, pixelRatio: { value: renderer.getPixelRatio() }, handPos: { value: new THREE.Vector3() }, handActive: { value: 0 } },
+    vertexShader: `
+      attribute float size; varying vec3 vColor; varying float vDist;
+      uniform float pixelRatio; uniform vec3 handPos; uniform float handActive;
+      void main() {
+        vColor = color;
+        vDist = handActive > 0.5 ? length(position - handPos) : 10.0;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        float hb = handActive > 0.5 ? max(0.0, 1.0 - vDist * 0.5) : 0.0;
+        gl_PointSize = (size + hb * 3.0) * pixelRatio * (300.0 / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor; varying float vDist; uniform float handActive;
+      void main() {
+        vec2 c = gl_PointCoord - 0.5; float d = length(c);
+        float a = 1.0 - smoothstep(0.3, 0.5, d); if (a < 0.01) discard;
+        float hg = handActive > 0.5 ? max(0.0, 1.0 - vDist * 0.3) * 0.5 : 0.0;
+        gl_FragColor = vec4(vColor * (1.0 + 0.5 * (1.0 - d*2.0) + hg), a * 0.9);
+      }
+    `,
+    vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  });
+  
+  const hg = new THREE.SphereGeometry(0.15, 16, 16);
+  const hm = new THREE.MeshBasicMaterial({ color: attractors[currentAttractor].color, transparent: true, opacity: 0.3 });
+  handSphere = new THREE.Mesh(hg, hm);
+  handSphere.visible = false;
+  scene.add(handSphere);
+  
+  initParticles();
+  updateColors();
+  animate();
+  
+  renderer.domElement.addEventListener('mousedown', e => { isDragging = true; lastMouse = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener('mousemove', e => {
+    if (!isDragging) return;
+    rotation.y += (e.clientX - lastMouse.x) * 0.005;
+    rotation.x += (e.clientY - lastMouse.y) * 0.005;
+    lastMouse = { x: e.clientX, y: e.clientY };
+  });
+  window.addEventListener('mouseup', () => isDragging = false);
+  renderer.domElement.addEventListener('wheel', e => { e.preventDefault(); zoom = Math.max(2, Math.min(15, zoom + e.deltaY * 0.005)); }, { passive: false });
+  window.addEventListener('resize', () => {
+    const w = container.clientWidth, h = container.clientHeight;
+    camera.aspect = w/h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
+  });
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  
+  if (handTracker && webcamEnabled) {
+    const hp = handTracker.detect();
+    if (hp) {
+      handPosition = { x: (hp.x - 0.5) * 6, y: -(hp.y - 0.5) * 4, z: 0, confidence: hp.confidence };
+      material.uniforms.handPos.value.set(handPosition.x, handPosition.y, 0);
+      material.uniforms.handActive.value = 1;
+      handSphere.position.set(handPosition.x, handPosition.y, 0);
+      handSphere.visible = true;
+      document.getElementById('status-dot').className = 'status-dot tracking';
+      document.getElementById('status-text').textContent = 'Tracking';
+    } else {
+      material.uniforms.handActive.value = 0;
+      handSphere.visible = false;
+      handPosition = null;
+      document.getElementById('status-dot').className = 'status-dot no-hand';
+      document.getElementById('status-text').textContent = 'No hand';
+    }
+  }
+  
+  const a = attractors[currentAttractor];
+  const dt = 0.004 * speed;
+  const scale = a.scale;
+  
+  for (let i = 0; i < particleCount; i++) {
+    const idx = i * 3;
+    let x = positions[idx] / scale, y = positions[idx+1] / scale, z = positions[idx+2] / scale;
+    const r = rk4(x, y, z, dt, a.compute, a.params);
+    let nx = r.x * scale, ny = r.y * scale, nz = r.z * scale;
+    
+    if (handPosition && webcamEnabled) {
+      const dx = handPosition.x - nx, dy = handPosition.y - ny, dz = -nz;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (dist > 0.1 && dist < 3) {
+        const force = handInfluence * handPosition.confidence * 0.02 / (dist * dist);
+        const dir = interactionMode === 'attract' ? 1 : -1;
+        nx += dx * force * dir; ny += dy * force * dir; nz += dz * force * dir;
+      }
+    }
+    
+    if (isNaN(nx) || isNaN(ny) || isNaN(nz) || Math.abs(nx) > 50 || Math.abs(ny) > 50 || Math.abs(nz) > 50) {
+      positions[idx] = (Math.random()-0.5)*2; positions[idx+1] = (Math.random()-0.5)*2; positions[idx+2] = (Math.random()-0.5)*2;
+    } else {
+      positions[idx] = nx; positions[idx+1] = ny; positions[idx+2] = nz;
+    }
+  }
+  
+  geometry.attributes.position.needsUpdate = true;
+  if (autoRotate) rotation.y += 0.003;
+  particles.rotation.x = rotation.x; particles.rotation.y = rotation.y;
+  handSphere.rotation.x = rotation.x; handSphere.rotation.y = rotation.y;
+  camera.position.z = zoom;
+  renderer.render(scene, camera);
+}
+
+function setupUI() {
+  const grid = document.getElementById('attractor-buttons');
+  Object.entries(attractors).forEach(([key, a]) => {
+    const btn = document.createElement('button');
+    btn.className = 'attractor-btn' + (key === currentAttractor ? ' active' : '');
+    btn.textContent = a.name;
+    btn.onclick = () => {
+      currentAttractor = key;
+      document.querySelectorAll('.attractor-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      initParticles();
+      updateColors();
+      handSphere.material.color.set(a.color);
+    };
+    grid.appendChild(btn);
+  });
+  
+  document.getElementById('webcam-toggle').onclick = async () => {
+    if (webcamEnabled) {
+      const video = document.getElementById('hidden-video');
+      if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+      webcamEnabled = false;
+      handTracker = null;
+      document.getElementById('webcam-toggle').textContent = 'Enable';
+      document.getElementById('webcam-toggle').classList.remove('active');
+      document.getElementById('webcam-section').classList.remove('active');
+      document.getElementById('webcam-title').classList.remove('active');
+      document.getElementById('webcam-controls').classList.add('hidden');
+      document.getElementById('webcam-preview').classList.add('hidden');
+      material.uniforms.handActive.value = 0;
+      handSphere.visible = false;
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' } });
+        const video = document.getElementById('hidden-video');
+        const displayVideo = document.getElementById('webcam-video');
+        video.srcObject = stream;
+        displayVideo.srcObject = stream;
+        await video.play();
+        await displayVideo.play();
+        
+        const canvas = document.getElementById('tracking-canvas');
+        canvas.width = 160; canvas.height = 120;
+        handTracker = new SimpleHandTracker(video, canvas);
+        webcamEnabled = true;
+        
+        document.getElementById('webcam-toggle').textContent = 'Disable';
+        document.getElementById('webcam-toggle').classList.add('active');
+        document.getElementById('webcam-section').classList.add('active');
+        document.getElementById('webcam-title').classList.add('active');
+        document.getElementById('webcam-controls').classList.remove('hidden');
+        document.getElementById('webcam-preview').classList.remove('hidden');
+      } catch (e) {
+        alert('Could not access webcam: ' + e.message);
+      }
+    }
+  };
+  
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      interactionMode = btn.dataset.mode;
+    };
+  });
+  
+  document.getElementById('influence-slider').oninput = e => {
+    handInfluence = e.target.value / 100;
+    document.getElementById('influence-value').textContent = e.target.value + '%';
+  };
+  
+  document.getElementById('particles-slider').oninput = e => {
+    particleCount = parseInt(e.target.value);
+    document.getElementById('particles-value').textContent = particleCount.toLocaleString();
+    initParticles();
+  };
+  
+  document.getElementById('speed-slider').oninput = e => {
+    speed = parseFloat(e.target.value);
+    document.getElementById('speed-value').textContent = speed.toFixed(1) + 'x';
+  };
+  
+  document.getElementById('rotate-toggle').onclick = () => {
+    autoRotate = !autoRotate;
+    document.querySelector('#rotate-toggle .toggle').classList.toggle('active', autoRotate);
+  };
+}
+
+setupUI();
+init();
+</script>
+</body>
+</html>
